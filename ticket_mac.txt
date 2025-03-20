@@ -1,0 +1,16 @@
+   Apartasuites Plaza Modelia   
+NIT: 12345678912
+Cl. 25B #74A-42
+Cundinamarca
+Tel: 317 4406740
+--------------------------------
+Cliente:
+Consumidor Final
+Documento: 2222222222
+--------------------------------
+Cant  Descripción        Total
+--------------------------------
+1    jugo                 100.00
+--------------------------------
+           Total Cambio: 1,010.00
+--------------------------------

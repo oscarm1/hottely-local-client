@@ -3,6 +3,7 @@ from escpos.printer import Usb, Network
 import textwrap
 import platform
 import os
+import subprocess
 
 # Si es Windows, importar win32print para buscar la impresora por nombre
 if platform.system() == "Windows":
@@ -13,7 +14,9 @@ app = Flask(__name__)
 # 📌 Detectar el sistema operativo
 SYSTEM_OS = platform.system()
 
-# 📌 Configuración de la impresora
+# 📌 Configuración de la impresora para Windows o USB
+printer_usb = None
+
 def get_printer():
     """Intenta conectar la impresora por USB, luego por nombre en Windows si aplica."""
     try:
@@ -29,19 +32,68 @@ def get_printer():
                 handle = win32print.OpenPrinter(printer_name)
                 return win32print.GetPrinter(handle, 2)  # Obtener configuración
             except Exception as e:
-                print(f"⚠️ No se encontró la impresora por nombre en Windows: {e}")
-        
+                print(f"⚠️ No se encontró la impresora por nombre en Windows: {e}")  
+                     
         return None  # Si falla, devolver None
 
-# Obtener la impresora
-p = get_printer()
+printer_usb = get_printer()
+
+# 📌 Función para imprimir en Mac usando CUPS
+def print_text_mac(printer_name, text):
+    try:
+        with open("ticket_mac.txt", "w") as f:
+            f.write(text)
+
+        subprocess.run(["lp", "-d", printer_name, "ticket_mac.txt"], check=True)
+        return {"status": "Success - Ticket enviado a impresora local en Mac"}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 # 📌 Función para imprimir el ticket
 def print_receipt(data):
-    if p is None:
-        return {"error": "No se encontró una impresora compatible"}, 500
+    if printer_usb is None and SYSTEM_OS != "Darwin":  # Darwin = macOS
+        return {"error": "No se encontró una impresora USB o compatible"}, 500
 
     try:
+        # 📌 Si es Mac, armar el texto y enviar a imprimir con lp
+        if SYSTEM_OS == "Darwin":
+            ticket = ""
+            # 📌 Encabezado del establecimiento
+            ticket += f"{data['EstablishmentName'].center(32)}\n"
+            ticket += f"NIT: {data['establishmentNIT']}\n"
+            ticket += f"{data['establishmentAddress']}\n"
+            ticket += f"{data['establishmentProvince']}\n"
+            ticket += f"Tel: {data['establishmentPhoneNumber']}\n"
+            ticket += "--------------------------------\n"
+
+            # 📌 Información del cliente
+            ticket += "Cliente:\n"
+            ticket += f"{data['movNombreCliente']}\n"
+            ticket += f"Documento: {data['movDocumentoCliente']}\n"
+            ticket += "--------------------------------\n"
+
+            # 📌 Encabezado de productos
+            ticket += "Cant  Descripción        Total\n"
+            ticket += "--------------------------------\n"
+
+            # 📌 Imprimir detalles del movimiento
+            for item in data['detalleMovimiento']:
+                cantidad = str(item['Cantidad']).ljust(3)
+                descripcion = textwrap.shorten(item['DescripcionProducto'], width=18, placeholder="...")
+                total = f"{item['Total']:,.2f}".rjust(7)
+                ticket += f"{cantidad}  {descripcion.ljust(18)}  {total}\n"
+
+            ticket += "--------------------------------\n"
+
+            # 📌 Totales
+            ticket += f"{'Total Cambio:'.rjust(24)} {data['movTotalCambio']:,.2f}\n"
+            ticket += "--------------------------------\n"
+
+            return print_text_mac("HP_Smart_Tank_500_series", ticket)
+
+        # 📌 Si es Windows o USB
+        p = printer_usb
+
         # 📌 Abrir el cajón SIEMPRE
         p.cashdraw(2)  # Señal para abrir el cajón
 
@@ -92,6 +144,7 @@ def print_receipt(data):
         p.cut()
 
         return {"status": "Success - Ticket impreso y cajón abierto"}, 200
+
     except Exception as e:
         return {"error": str(e)}, 500
 
@@ -109,4 +162,4 @@ def print_ticket():
     return print_receipt(data)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5001)
